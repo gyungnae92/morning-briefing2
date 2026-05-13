@@ -1,0 +1,5 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Sans KR',sans-serif;background:linear-gradient(180deg,#FAFAF8,#F2F0EB);color:#1a1a1a;min-height:100vh}
+::selection{background:#0068B7;color:#fff}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
