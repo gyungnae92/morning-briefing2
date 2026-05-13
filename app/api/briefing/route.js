@@ -1,8 +1,14 @@
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 import { createClient } from '@supabase/supabase-js';
 
 export async function GET() {
+  const headers = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  };
+
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -13,21 +19,26 @@ export async function GET() {
       .from('briefings')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    if (error) throw error;
-    if (!data) return Response.json({ error: '브리핑 없음' }, { status: 404 });
+    if (error) {
+      return Response.json({ error: error.message }, { status: 500, headers });
+    }
 
-    const briefing = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+    if (!data || data.length === 0) {
+      return Response.json({ error: 'No briefing found' }, { status: 404, headers });
+    }
+
+    const row = data[0];
+    const briefing = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
     briefing._meta = {
-      date: data.date,
-      time_slot: data.time_slot,
-      created_at: data.created_at,
+      date: row.date,
+      time_slot: row.time_slot,
+      created_at: row.created_at,
     };
 
-    return Response.json(briefing);
+    return Response.json(briefing, { headers });
   } catch (err) {
-    return Response.json({ error: err.message || '조회 실패' }, { status: 500 });
+    return Response.json({ error: err.message }, { status: 500, headers });
   }
 }
