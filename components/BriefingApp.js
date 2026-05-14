@@ -25,31 +25,6 @@ function Badge({ source }) {
   return <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:m?m.color+'15':'#f0f0f0', color:m?m.color:'#888', fontWeight:500 }}>{isNews?'📰':'📻'} {source}</span>;
 }
 
-function findSources(item, rawSources) {
-  if (!rawSources) return [];
-
-  // Method 1: source_indices (exact match via numbered index)
-  if (item.source_indices && item.source_indices.length > 0) {
-    const matched = item.source_indices
-      .map(idx => rawSources.find(rs => rs.idx === idx))
-      .filter(Boolean);
-    if (matched.length > 0) return matched.slice(0, 5);
-  }
-
-  // Method 2: source name + headline keyword matching (fallback)
-  const results = rawSources.filter(rs => {
-    const nameMatch = item.sources?.some(s => {
-      const a = (s || '').toLowerCase();
-      const b = (rs.source || '').toLowerCase();
-      return a.includes(b) || b.includes(a);
-    });
-    const titleWords = (item.headline || '').split(/[\s,·]+/).filter(w => w.length > 2);
-    const titleMatch = titleWords.length > 0 && titleWords.some(w => (rs.title || '').includes(w));
-    return nameMatch || titleMatch;
-  });
-  return results.slice(0, 5);
-}
-
 export default function BriefingApp() {
   const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +50,13 @@ export default function BriefingApp() {
     setOpenPanels(p => { const n = new Set(p); n.has(key)?n.delete(key):n.add(key); return n; });
   }
 
+  function getMatchedSources(item) {
+    if (!briefing?.raw_sources || !item.source_indices?.length) return [];
+    return item.source_indices
+      .map(idx => briefing.raw_sources.find(rs => rs.idx === idx))
+      .filter(Boolean);
+  }
+
   function filtered() {
     if (!briefing?.sections) return [];
     return briefing.sections
@@ -83,13 +65,16 @@ export default function BriefingApp() {
   }
 
   const meta = briefing?._meta;
+  const totalIssues = briefing?.sections?.reduce((a, s) => a + (s.items?.length || 0), 0) || 0;
 
   return (
     <div style={{ maxWidth:680, margin:'0 auto', padding:'32px 20px', minHeight:'100vh', fontFamily:"'Noto Sans KR',sans-serif" }}>
       <div style={{ marginBottom:28 }}>
         <div style={{ fontSize:11, letterSpacing:'0.15em', color:'#999', marginBottom:6, fontWeight:500 }}>MORNING BRIEFING</div>
         <h1 style={{ fontSize:28, fontWeight:800, margin:0, lineHeight:1.3 }}>오늘의 아침 브리핑</h1>
-        {meta && <div style={{ fontSize:13, color:'#777', marginTop:4 }}>{meta.date} · {meta.time_slot === 'morning' ? '오전' : '오후'} 업데이트</div>}
+        {meta && <div style={{ fontSize:13, color:'#777', marginTop:4 }}>
+          {meta.date} · {meta.time_slot === 'morning' ? '오전' : '오후'} · {totalIssues}건
+        </div>}
       </div>
 
       <div style={{ marginBottom:20 }}>
@@ -103,16 +88,14 @@ export default function BriefingApp() {
         </div>
       </div>
 
-      {loading && <div style={{ textAlign:'center', padding:'60px 20px' }}><div style={{ width:40, height:40, border:'3px solid #eee', borderTopColor:'#1a1a1a', borderRadius:'50%', margin:'0 auto 16px', animation:'spin .8s linear infinite' }} /><div style={{ fontSize:15, fontWeight:600 }}>Loading...</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>}
+      {loading && <div style={{ textAlign:'center', padding:'60px 20px' }}><div style={{ width:40, height:40, border:'3px solid #eee', borderTopColor:'#1a1a1a', borderRadius:'50%', margin:'0 auto 16px', animation:'spin .8s linear infinite' }} /><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>}
 
-      {error && !loading && <div style={{ padding:20, background:'#FFF5F5', border:'1px solid #FDD', borderRadius:12, textAlign:'center' }}><div style={{ fontSize:14, color:'#C00', marginBottom:12 }}>{error}</div><button onClick={loadBriefing} style={{ padding:'8px 16px', border:'1px solid #C00', borderRadius:8, background:'#fff', color:'#C00', fontSize:13, cursor:'pointer' }}>Retry</button></div>}
+      {error && !loading && <div style={{ padding:20, background:'#FFF5F5', border:'1px solid #FDD', borderRadius:12, textAlign:'center' }}><div style={{ fontSize:14, color:'#C00', marginBottom:12 }}>{error}</div><button onClick={loadBriefing} style={{ padding:'8px 16px', border:'1px solid #C00', borderRadius:8, background:'#fff', color:'#C00', fontSize:13, cursor:'pointer' }}>다시 시도</button></div>}
 
       {briefing && !loading && (
         <div>
           {briefing.one_liner && <div style={{ padding:'16px 20px', background:'#1a1a1a', borderRadius:12, marginBottom:16, color:'#fff', fontSize:15, fontWeight:600, lineHeight:1.6 }}>📌 {briefing.one_liner}</div>}
           {briefing.data_quality && <div style={{ padding:'10px 14px', background:'#F0F7FF', border:'1px solid #D0E3F7', borderRadius:8, marginBottom:16, fontSize:12, color:'#2C5F8A' }}>📊 {briefing.data_quality}</div>}
-
-          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'#E8F4FD', borderRadius:8, marginBottom:16, fontSize:12, color:'#0068B7' }}>👆 이슈를 탭하면 원문 기사·녹취록을 확인할 수 있습니다</div>
 
           <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:20 }}>
             <span style={{ fontSize:11, color:'#999', alignSelf:'center', marginRight:2 }}>필터:</span>
@@ -125,7 +108,8 @@ export default function BriefingApp() {
             {sec.items.map((item, ii) => {
               const key = item.id || `${si}-${ii}`;
               const open = openPanels.has(key);
-              const matched = open ? findSources(item, briefing.raw_sources) : [];
+              const matched = open ? getMatchedSources(item) : [];
+
               return <div key={ii} style={{ background:'#fff', borderRadius:10, marginBottom:10, borderLeft:`3px solid ${ic[item.importance]||'#999'}`, boxShadow:open?'0 2px 12px rgba(0,0,0,0.08)':'0 1px 3px rgba(0,0,0,0.04)', overflow:'hidden' }}>
                 <div onClick={() => togglePanel(key)} style={{ padding:'16px 18px', cursor:'pointer' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
@@ -137,14 +121,13 @@ export default function BriefingApp() {
                   <div style={{ display:'flex', gap:5, flexWrap:'wrap', alignItems:'center' }}>
                     {item.sources?.map((s,j) => <Badge key={j} source={s} />)}
                     <span style={{ fontSize:10, color:'#bbb', marginLeft:'auto' }}>{il[item.importance]}</span>
-                    <span style={{ fontSize:10, color:'#0068B7', fontWeight:600 }}>🔍 원문</span>
+                    <span style={{ fontSize:10, color:'#0068B7', fontWeight:600 }}>🔍 원문 {item.source_indices?.length || 0}건</span>
                   </div>
                 </div>
 
                 {open && (
                   <div style={{ padding:'0 18px 16px' }}>
                     <div style={{ background:'#F7F6F3', borderRadius:10, padding:16, borderTop:'2px solid #E8E6E1' }}>
-                      <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>🔍 원문 ({matched.length}건)</div>
 
                       {matched.length > 0 ? matched.map((rs, ri) => (
                         <div key={ri} style={{ background:'#fff', borderRadius:8, padding:14, marginBottom:8, border:'1px solid #E8E6E1' }}>
@@ -161,8 +144,8 @@ export default function BriefingApp() {
                           </div>
                         </div>
                       )) : (
-                        <div style={{ fontSize:13, color:'#999', textAlign:'center', padding:16, background:'#fff', borderRadius:8, border:'1px dashed #ddd' }}>
-                          원문을 찾지 못했습니다.
+                        <div style={{ fontSize:13, color:'#999', textAlign:'center', padding:16 }}>
+                          매칭되는 원문이 없습니다.
                         </div>
                       )}
                     </div>
